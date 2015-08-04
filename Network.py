@@ -46,14 +46,14 @@ def sigmoidPrime(z):
 
 def dataSplit(inputs, outputs, trainSplit = 0.70, testSplit = 0.15, valSplit = 0.15):
     """
-    Splits data into test, train, and validation data
+    - Splits data into test, train, and validation data
     Original input data needs to be an m x n array where there are n variables and m samples
-    By default randomly splits the data, but block split needs to be added. 
-    Outputs should be test, train and validation data where each set is an n x j array where
-    there are n variables and j samples
-    TODO: Add blockSplit
-    The number from valSplit isn't actually used, it's just the leftovers after testSplit and trainSplit 
+    - By default randomly splits the data, but block split needs to be added. 
+    - The number from valSplit isn't actually used, it's just the leftovers after testSplit and trainSplit 
     are accounted for.
+    - Hasn't been tested on any dataset other than house dataset yet. Multiple outputs may cause problems
+
+    TODO: Add blockSplit
     """
 
     # Check correct split
@@ -94,6 +94,13 @@ def dataSplit(inputs, outputs, trainSplit = 0.70, testSplit = 0.15, valSplit = 0
 
 
 
+
+
+
+
+
+
+
 ## Vectorized Functions ---------------------------------------------------------------------------
 sigmoidVec = np.vectorize(sigmoid)
 sigmoidPrimeVec = np.vectorize(sigmoidPrime)
@@ -120,23 +127,26 @@ class Network():
         self.weights = [np.random.rand(i,j) for i,j in zip(sizes[1:],sizes[:-1])]
 
         if __debug__:
-            print("Biases:\n {0}\n".format(self.biases))
-            print("Weights:\n {0}\n".format(self.weights))
+            print("Biases Sizes:\n {0}\n".format([b.shape for b in self.biases]))
+            print("Weights Sizes:\n {0}\n".format([w.shape for w in self.weights]))
 
 
-    # def feedForward(self, a, actFunc):
-    #     """
-    #     Forward propogates an input vector "a" throughout
-    #     the neural network. Input vector "a" should be passed
-    #     in as a *2d* numpy array, even though it is only mathematically
-    #     1d
-    #     """
-    #     for l in xrange(self.numLayers-1):
-    #         b = self.biases[l]
-    #         w = self.weights[l]
-    #         a = actFunc(np.dot(w,a)+b)
+    def regFeedForward(self, a, actFunc):
+        """
+        Forward propogates an input vector "a" throughout
+        the neural network, assuming a linear activation function on output layer. 
+        Input vector "a" should be passed in as a *2d* numpy array, 
+        even though it is only mathematically
+        1d. (Use a.reshape(-1,1) to do so)
 
-    #     return a
+        !!! TODO: Modify so last layer is run through linear activation function !!!
+        """
+        for l in xrange(self.numLayers-1):
+            b = self.biases[l]
+            w = self.weights[l]
+            a = actFunc(np.dot(w,a)+b)
+
+        return a
 
 
     def train(self, trainInputs, trainOutputs, miniBatchSize, epochs = 100, eta = 0.3, lmbda = 0.001, valInputs = None, valOutputs = None):
@@ -146,11 +156,38 @@ class Network():
         of the number of elements in the training set. "eta" and "lmbda" are the learning rate
         and regularization value respectively.
         """
+
+        # Get important sizes
+        numVar, numSamples = trainInputs.shape
+        if (valInputs is not None) and (valOutputs is not None):
+            valSamples = valInputs.shape[1]
+
+        # Train over epochs
         for i in xrange(epochs):
-            # Create Mini-batches
+            print "Epoch", i,
+
+            # Create Mini-batches (array of arrays that correspond to each other)
+            shuffle = np.random.permutation(numSamples)
+            trainInputs = trainInputs[:,shuffle]
+            trainOutputs = trainOutputs[:,shuffle]
+            miniBatchInputs = [ trainInputs[:,k:k+miniBatchSize] for k in xrange(0,numSamples,miniBatchSize) ]
+            miniBatchOutputs = [ trainOutputs[:,k:k+miniBatchSize] for k in xrange(0,numSamples,miniBatchSize) ]
+
             # Update weights using mini batches
+            for miniBatch in zip(miniBatchInputs, miniBatchOutputs):
+                self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda)
+
             # Check on validation data
-            continue
+            if (valInputs is not None) and (valOutputs is not None):
+                pass
+
+            # Finish Printing
+            print " "
+
+        return 0
+
+
+    def sgdMiniBatch(self, inputs, outputs, eta, lmbda):
         return 0
 
 
@@ -162,12 +199,15 @@ class Network():
 ## Main -------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     # Read Data
-    inputs = np.genfromtxt("houseInputs.csv",delimiter=",");
-    outputs = np.genfromtxt("houseTargets.csv",delimiter=",");
+    # inputs = np.genfromtxt("houseInputs.csv",delimiter=",");
+    # outputs = np.genfromtxt("houseTargets.csv",delimiter=",");
+    inputs = np.genfromtxt("buildingInputs.csv",delimiter=",");
+    outputs = np.genfromtxt("buildingTargets.csv",delimiter=",");
 
     # Initialize Neural Network
+    # testNN = Network([3,4,2])
     # houseNN = Network([13,20,1])
-    testNN = Network([3,4,2])
+    buildingNN = Network([14,20,3])
 
     # Split data
     inputsTrain, inputsTest, inputsVal, outputsTrain, outputsTest, outputsVal, = dataSplit(inputs, outputs)
@@ -190,3 +230,6 @@ if __name__ == "__main__":
     # plt.figure()
     # plt.plot(outputs)
     # plt.show()
+
+    # Train Network
+    buildingNN.train(inputsTrain, outputsTrain, 491, valInputs=inputsVal, valOutputs=outputsVal)
