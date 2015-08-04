@@ -138,18 +138,21 @@ class Network():
         Input vector "a" should be passed in as a *2d* numpy array, 
         even though it is only mathematically
         1d. (Use a.reshape(-1,1) to do so)
-
-        !!! TODO: Modify so last layer is run through linear activation function !!!
         """
-        for l in xrange(self.numLayers-1):
+        for l in xrange(self.numLayers-2):
             b = self.biases[l]
             w = self.weights[l]
             a = actFunc(np.dot(w,a)+b)
 
+        # Last layer uses linear activation instead of sigmoidal
+        b = self.biases[-1]
+        w = self.weights[-1]
+        a = np.dot(w,a) + b
+
         return a
 
 
-    def train(self, trainInputs, trainOutputs, miniBatchSize, epochs = 100, eta = 0.3, lmbda = 0.001, valInputs = None, valOutputs = None):
+    def train(self, trainInputs, trainOutputs, miniBatchSize, epochs = 10, eta = 0.3, lmbda = 0.001, valInputs = None, valOutputs = None):
         """
         Train neural network using training data. If valInputs & valOutputs are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
@@ -164,7 +167,7 @@ class Network():
 
         # Train over epochs
         for i in xrange(epochs):
-            print "Epoch", i,
+            print "Epoch {0} || ".format(i),
 
             # Create Mini-batches (array of arrays that correspond to each other)
             shuffle = np.random.permutation(numSamples)
@@ -179,7 +182,11 @@ class Network():
 
             # Check on validation data
             if (valInputs is not None) and (valOutputs is not None):
-                pass
+                mse = 0.0
+                for v in xrange(valSamples):
+                    mse += self.squaredError(self.regFeedForward(valInputs[:,v].reshape(-1,1), sigmoidVec).T, valOutputs[:,v])
+                mse /= valSamples
+                print "Val Err =", mse,
 
             # Finish Printing
             print " "
@@ -188,7 +195,21 @@ class Network():
 
 
     def sgdMiniBatch(self, inputs, outputs, eta, lmbda):
+        """
+        Performs SGD on a mini-batch. More info to come.
+        """
         return 0
+
+
+    def squaredError(self, estimate, actual):
+        """
+        Calculates the standard squared error between two scalars/vectors
+        The two vectors passed in need to be the same size, and this needs to be done outside
+        the function
+        """
+        return (estimate - actual)**2
+
+
 
 
 
@@ -211,6 +232,7 @@ if __name__ == "__main__":
 
     # Split data
     inputsTrain, inputsTest, inputsVal, outputsTrain, outputsTest, outputsVal, = dataSplit(inputs, outputs)
+
 
     # Plot Data
     # plt.figure()
