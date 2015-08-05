@@ -11,7 +11,11 @@ Requirements: Python 2.7.6 (Tested on)
               Numpy
               Matplotlib
 
-Notes:  The purpose of this file is to help me understand neural networks on a programming level
+Notes:  - The purpose of this file is to help me understand neural networks on a programming level
+        - This code is specifically made to perform neural network regressions, not classifications. It won't
+          work for classifications
+
+TODO:   - Make reshape function that will reshape any vector to vertical 1-d vector
 """
 
 
@@ -44,14 +48,14 @@ def sigmoidPrime(z):
     return sigmoid(z) * (1 - sigmoid(z))
 
 
-def dataSplit(inputs, outputs, trainSplit = 0.70, testSplit = 0.15, valSplit = 0.15):
+def dataSplit(inputs, targets, trainSplit = 0.70, testSplit = 0.15, valSplit = 0.15):
     """
     - Splits data into test, train, and validation data
     Original input data needs to be an m x n array where there are n variables and m samples
     - By default randomly splits the data, but block split needs to be added. 
     - The number from valSplit isn't actually used, it's just the leftovers after testSplit and trainSplit 
     are accounted for.
-    - Hasn't been tested on any dataset other than house dataset yet. Multiple outputs may cause problems
+    - Hasn't been tested on any dataset other than house dataset yet. Multiple targets may cause problems
 
     TODO: Add blockSplit
     """
@@ -62,8 +66,8 @@ def dataSplit(inputs, outputs, trainSplit = 0.70, testSplit = 0.15, valSplit = 0
         sys.exit()
 
     # Check correct lengths
-    if len(inputs) != len(outputs):
-        print("ERROR: Please ensure inputs and outputs are same length!")
+    if len(inputs) != len(targets):
+        print("ERROR: Please ensure inputs and targets are same length!")
         sys.exit()
 
     dataLen = len(inputs)
@@ -79,14 +83,14 @@ def dataSplit(inputs, outputs, trainSplit = 0.70, testSplit = 0.15, valSplit = 0
     inputsTrain = inputs[trainIdx, :]
     inputsTest = inputs[testIdx, :]
     inputsVal = inputs[valIdx, :]
-    outputsTrain = outputs[trainIdx]
-    outputsTest = outputs[testIdx]
-    outputsVal = outputs[valIdx]
+    targetsTrain = targets[trainIdx]
+    targetsTest = targets[testIdx]
+    targetsVal = targets[valIdx]
 
     if __debug__:
         print("{0} elements total, {1} elements towards training, {2} elements towards testing, and {3} elements towards validation\n".format(dataLen, trainLen, testLen, valLen))
 
-    return np.array(inputsTrain).T, np.array(inputsTest).T, np.array(inputsVal).T, np.array(outputsTrain).T, np.array(outputsTest).T, np.array(outputsVal).T
+    return np.array(inputsTrain).T, np.array(inputsTest).T, np.array(inputsVal).T, np.array(targetsTrain).T, np.array(targetsTest).T, np.array(targetsVal).T
 
 
 
@@ -120,7 +124,7 @@ class Network():
         Initialize neural network.
         'sizes' should be a list where each element is the size
         of that layer. For example, a network with 3 input nodes,
-        4 hidden nodes, and 1 output node would be [3,4,2]
+        4 hidden nodes, and 1 output node would be [3,4,1]
         """
         self.numLayers = len(sizes)
         self.biases = [np.random.rand(i, 1) for i in sizes[1:]]
@@ -152,9 +156,23 @@ class Network():
         return a
 
 
-    def train(self, trainInputs, trainOutputs, miniBatchSize, epochs = 10, eta = 0.3, lmbda = 0.001, valInputs = None, valOutputs = None):
+    def evaluateMSE(self, evInputs, evTargets):
         """
-        Train neural network using training data. If valInputs & valOutputs are included,
+        Evaluate the network error with data. Mean squared error
+        is the metric used. Multiple outputs will be summed into
+        1 number
+        """
+        evSamples = evInputs.shape[1]
+        mse = 0.0
+        for t in xrange(evSamples):
+            mse += self.squaredError(self.regFeedForward(evInputs[:,t].reshape(-1,1), sigmoidVec).T, evTargets[:,t])
+        mse /= evSamples
+        return np.sum(mse)
+
+
+    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.3, lmbda = 0.001, valInputs = None, valTargets = None):
+        """
+        Train neural network using training data. If valInputs & valTargets are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
         of the number of elements in the training set. "eta" and "lmbda" are the learning rate
         and regularization value respectively.
@@ -162,8 +180,11 @@ class Network():
 
         # Get important sizes
         numVar, numSamples = trainInputs.shape
-        if (valInputs is not None) and (valOutputs is not None):
+        if (valInputs is not None) and (valTargets is not None):
             valSamples = valInputs.shape[1]
+            valCounter = 0
+            mseEps = 0.001
+            mseOld = 0.0
 
         # Train over epochs
         for i in xrange(epochs):
@@ -172,21 +193,32 @@ class Network():
             # Create Mini-batches (array of arrays that correspond to each other)
             shuffle = np.random.permutation(numSamples)
             trainInputs = trainInputs[:,shuffle]
-            trainOutputs = trainOutputs[:,shuffle]
+            trainTargets = trainTargets[:,shuffle]
             miniBatchInputs = [ trainInputs[:,k:k+miniBatchSize] for k in xrange(0,numSamples,miniBatchSize) ]
-            miniBatchOutputs = [ trainOutputs[:,k:k+miniBatchSize] for k in xrange(0,numSamples,miniBatchSize) ]
+            miniBatchTargets = [ trainTargets[:,k:k+miniBatchSize] for k in xrange(0,numSamples,miniBatchSize) ]
 
             # Update weights using mini batches
-            for miniBatch in zip(miniBatchInputs, miniBatchOutputs):
+            for miniBatch in zip(miniBatchInputs, miniBatchTargets):
                 self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda)
 
             # Check on validation data
-            if (valInputs is not None) and (valOutputs is not None):
-                mse = 0.0
-                for v in xrange(valSamples):
-                    mse += self.squaredError(self.regFeedForward(valInputs[:,v].reshape(-1,1), sigmoidVec).T, valOutputs[:,v])
-                mse /= valSamples
-                print "Val Err =", mse,
+            if (valInputs is not None) and (valTargets is not None):
+
+                # Calculate MSE
+                mse = self.evaluateMSE(valInputs, valTargets)     
+
+                # Check for Validation increasing accuracy
+                if abs(mse - mseOld) < mseEps:
+                    valCounter += 1
+                else:
+                    valCounter = 0
+                mseOld = mse
+
+                # Print and (maybe) break
+                print "Val Mse =", mse, "|| Val Fail Count =", valCounter,
+                if valCounter >= 5:
+                    print " "
+                    break
 
             # Finish Printing
             print " "
@@ -194,10 +226,26 @@ class Network():
         return 0
 
 
-    def sgdMiniBatch(self, inputs, outputs, eta, lmbda):
+    def sgdMiniBatch(self, inputs, targets, eta, lmbda):
         """
-        Performs SGD on a mini-batch. More info to come.
+        Performs SGD on a mini-batch. This function is almost identical to Michael Nielson's
+        The actual back-propagation is done in another function, while this handles the
+        SGD
         """
+        numSamples = inputs.shape[1]
+        gradB = [np.zeros(b.shape) for b in self.biases]
+        gradW = [np.zeros(w.shape) for w in self.weights]
+
+        # Calculate the gradient of the weights and biases to be used in SGD
+        for i in xrange(numSamples):
+            deltaGradB, deltaGradW = self.backprop(inputs[:,i], targets[:,i])
+            gradB = [nb + dnb for nb, dnb in zip(gradB, deltaGradB)]
+            gradW = [nw + dnw for nw, dnw in zip(gradW, deltaGradW)]
+
+        # Do gradient descent update step
+        self.weights = [w - (eta/numSamples)*nw for w, nw in zip(self.weights, gradW)]
+        self.biases = [b - (eta/numSamples)*nb for b, nb in zip(self.biases, gradB)]
+
         return 0
 
 
@@ -210,6 +258,80 @@ class Network():
         return (estimate - actual)**2
 
 
+    def backprop(self, inputVec, targetVec):
+        """
+        Return gradient for single example for cost function.
+        Called by sgd function
+        return values are layer-by-layer lists of arrays, similar to
+        self.biases and self.weights
+        This function is also similar to Nielson's, but modified for the 
+        linear output activation function
+        """
+        inputVec = inputVec.reshape(-1,1)       # Reshape inputVec into vertical vector so math works
+        targetVec = targetVec.reshape(-1,1)     # Same with targetVec
+
+        # Initialize gradient
+        nablaB = [np.zeros(b.shape) for b in self.biases]
+        nablaW = [np.zeros(w.shape) for w in self.weights]
+
+        # Feedforward and save intermediate values
+        a = inputVec
+        acts = [inputVec]    # List to store activations for each layer
+        zs = []                     # List to store weighted inputs for each layer
+        for i in xrange(self.numLayers - 2):        # -2 because weights, biases have 1 less than numLayers, then avoid last layer
+            b = self.biases[i]
+            w = self.weights[i]
+            z = np.dot(w, a) + b
+            zs.append(z)
+            a = sigmoidVec(z)
+            acts.append(a)
+
+        # Above, but for last layer
+        b = self.biases[-1]
+        w = self.weights[-1]
+        z = np.dot(w, a) + b
+        zs.append(z)
+        a = z       # Apply linear activation func. instead of sigmoidal
+        acts.append(a)
+
+        # Backward Pass last layer
+        delta = self.costDerivative(acts[-1], targetVec) * 1        # BP1 - You multiply by one in place of sigmoidPrime because linear act. func. in output layer
+        nablaB[-1] = delta                                          # BP3
+        nablaW[-1] = np.dot(delta, acts[-2].T)                      # BP4
+
+        # Backward pass rest of layers
+        for l in xrange(2, self.numLayers):
+            z = zs[-l]
+            spv = sigmoidPrimeVec(z)
+            delta = np.dot(self.weights[-l+1].T, delta) * spv       # BP2
+            nablaB[-l] = delta                                      # BP3
+            nablaW[-l] = np.dot(delta, acts[-l-1].T)
+
+        return nablaB, nablaW
+
+
+    def costDerivative(self, outputActivations, target):
+        """
+        Return vector of partial derivatives of cost function
+        for output activations
+        """
+        return (outputActivations - target)
+
+
+    def evaluate(self, evInputs, evTargets):
+        """
+        Return vector of estimates for any given inputs.
+        Will be same size as the targets also supplied
+        """
+        outputs = np.zeros(evTargets.shape)
+        evSamples = evInputs.shape[1]
+        mse = 0.0
+        for t in xrange(evSamples):
+            outputs[:,t] = self.regFeedForward(evInputs[:,t].reshape(-1,1), sigmoidVec).T
+            mse += self.squaredError(outputs[:,t], evTargets[:,t])
+        mse /= evSamples
+        return np.sum(mse), outputs
+
 
 
 
@@ -219,39 +341,53 @@ class Network():
 
 ## Main -------------------------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Read Data
-    # inputs = np.genfromtxt("houseInputs.csv",delimiter=",");
-    # outputs = np.genfromtxt("houseTargets.csv",delimiter=",");
-    inputs = np.genfromtxt("buildingInputs.csv",delimiter=",");
-    outputs = np.genfromtxt("buildingTargets.csv",delimiter=",");
 
-    # Initialize Neural Network
-    # testNN = Network([3,4,2])
-    # houseNN = Network([13,20,1])
-    buildingNN = Network([14,20,3])
+    # Read Data
+    prefix = "building"     # or "house"
+    inputs = np.genfromtxt(prefix + "Inputs.csv",delimiter=",");
+    targets = np.genfromtxt(prefix + "Targets.csv",delimiter=",");
+    
+
+    # Initialize Neural Network - Uncomment one
+    # NN = Network([3,4,2])         # Test
+    # NN = Network([13,20,1])       # House
+    NN = Network([14, 11, 20, 3])       # Building
+    
 
     # Split data
-    inputsTrain, inputsTest, inputsVal, outputsTrain, outputsTest, outputsVal, = dataSplit(inputs, outputs)
+    inputsTrain, inputsTest, inputsVal, targetsTrain, targetsTest, targetsVal, = dataSplit(inputs, targets)
 
 
-    # Plot Data
+    # Plot Original Data to verify split worked - Optional
     # plt.figure()
-    # plt.plot(inputsTrain)
+    # plt.plot(inputsTrain.T)
     # plt.figure()
-    # plt.plot(inputsTest)
+    # plt.plot(inputsTest.T)
     # plt.figure()
-    # plt.plot(inputsVal)
+    # plt.plot(inputsVal.T)
     # plt.figure()
-    # plt.plot(inputs)
+    # plt.plot(inputs.T)
     # plt.figure()
-    # plt.plot(outputsTrain)
+    # plt.plot(targetsTrain.T)
     # plt.figure()
-    # plt.plot(outputsTest)
+    # plt.plot(targetsTest.T)
     # plt.figure()
-    # plt.plot(outputsVal)
+    # plt.plot(targetsVal.T)
     # plt.figure()
-    # plt.plot(outputs)
-    # plt.show()
+    # plt.plot(targets.T)
+
 
     # Train Network
-    buildingNN.train(inputsTrain, outputsTrain, 491, valInputs=inputsVal, valOutputs=outputsVal)
+    NN.train(inputsTrain, targetsTrain, 491, valInputs=inputsVal, valTargets=targetsVal)
+
+    # Test Network
+    MSEtest, outputsTest = NN.evaluate(inputsTest, targetsTest)
+    print "Test MSE =", MSEtest
+
+    # Plot Test Output
+    # plt.figure()
+    # plt.plot(targetsTest.T)
+    # plt.plot(outputsTest.T)
+    # plt.show()
+
+    np.savetxt("out.csv", outputsTest.T, delimiter=",")
