@@ -20,6 +20,9 @@ TODO:   - Add regularization
         - Normalize inputs
         - Add training performance instead of just val. performance
         - Make damn thing work
+        - Test different datasets
+        - Convert backprop/forward prop to matrix multiplication instead
+          of looping through samples
 """
 
 
@@ -375,25 +378,33 @@ class Network():
 ## Main -------------------------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    # Read Data
-    prefix = "house"
+    # Prepare stuff
+    # prefix = "house"
+    # sizes = [13, 15, 1]
+    # mbSize = 71
     # prefix = "building"
+    # sizes = [14, 20, 3]
+    # mbSize = 491
+    prefix = "abalone"
+    sizes = [8, 15, 1]
+    mbSize = 172
+    numEpochs = 200
+    etaVal = 0.30
+
+    # Read data
     inputs = np.genfromtxt(prefix + "Inputs.csv",delimiter=",");
     targets = np.genfromtxt(prefix + "Targets.csv",delimiter=",");
     
 
     # Initialize Neural Network - Uncomment one
-    NN = Network([13, 15, 1])       # House
-    # NN = Network([14, 20, 3])       # Building
-    
+    NN = Network(sizes)
 
     # Split data
     inputsTrain, inputsTest, inputsVal, targetsTrain, targetsTest, targetsVal, = dataSplit(inputs, targets)
 
-
     # Reshape 1d vectors
     # If target vector is 1d, it needs to be reshapen to be 2d. Use .reshape(1,-1) to do so
-    if prefix == "house":
+    if prefix != "building":
         targetsTrain = targetsTrain.reshape(1,-1)
         targetsTest = targetsTest.reshape(1,-1)
         targetsVal = targetsVal.reshape(1,-1)
@@ -409,8 +420,7 @@ if __name__ == "__main__":
 
 
     # Train Network
-    NN.train(inputsTrainScaled, targetsTrainScaled, 71, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=0.30, epochs=200)
-    # NN.train(inputsTrain, targetsTrain, 491, valInputs=inputsVal, valTargets=targetsVal)
+    NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs)
 
 
     # Test Network
@@ -422,9 +432,9 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(targetsTestScaled.T,'r')
     plt.plot(outputsTestScaled.T)
-    plt.figure()
-    plt.plot(targetsTrainScaled.T)
-    plt.plot(outputsTrainScaled.T)
+    # plt.figure()
+    # plt.plot(targetsTrainScaled.T)
+    # plt.plot(outputsTrainScaled.T)
     plt.show()
 
     np.savetxt("testOut.csv", outputsTestScaled.T, delimiter=",")

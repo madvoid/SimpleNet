@@ -3,5 +3,5 @@ Simple Python Neural Network I use for learning purposes. You probably shouldn't
 
 The data used for testing are as follows:
 
-- House dataset pulled from matlab
-- Building dataset pulled from matlab
+- House dataset pulled from Matlab
+- Building dataset pulled from Matlab
