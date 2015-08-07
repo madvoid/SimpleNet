@@ -15,7 +15,11 @@ Notes:  - The purpose of this file is to help me understand neural networks on a
         - This code is specifically made to perform neural network regressions, not classifications. It won't
           work for classifications
 
-TODO:   - Make reshape function that will reshape any vector to vertical 1-d vector
+TODO:   - Add regularization
+        - Gradient checking?
+        - Normalize inputs
+        - Add training performance instead of just val. performance
+        - Make damn thing work
 """
 
 
@@ -93,6 +97,24 @@ def dataSplit(inputs, targets, trainSplit = 0.70, testSplit = 0.15, valSplit = 0
     return np.array(inputsTrain).T, np.array(inputsTest).T, np.array(inputsVal).T, np.array(targetsTrain).T, np.array(targetsTest).T, np.array(targetsVal).T
 
 
+def normalizeMatrix(mat):
+    """
+    Converts matrix to span -1 to 1
+    Returns converted matrix and array of tuples representing the original min/max
+    Works on the rows of a matrix (min/max taken on rows)
+    """
+    numRows = mat.shape[0]
+    sMat = np.zeros(mat.shape)
+    oSpans = []
+    for i in xrange(numRows):
+        oMin, oMax = min(mat[i,:]), max(mat[i,:])       # Original min/max
+        sMat[i,:] = mat[i,:] - oMin
+        sMat[i,:] = sMat[i,:]/(oMax - oMin)
+        sMat[i,:] = sMat[i,:]*(2)-1                     # Convert to [-1,1] range
+        oSpans.append((oMin, oMax))
+
+    return sMat, oSpans
+        
 
 
 
@@ -126,9 +148,12 @@ class Network():
         of that layer. For example, a network with 3 input nodes,
         4 hidden nodes, and 1 output node would be [3,4,1]
         """
+        # if __debug__:
+            # np.random.seed(42)      # Consistent random seed
+        
         self.numLayers = len(sizes)
-        self.biases = [np.random.rand(i, 1) for i in sizes[1:]]
-        self.weights = [np.random.rand(i,j) for i,j in zip(sizes[1:],sizes[:-1])]
+        self.biases = [0.01*np.random.rand(i, 1) for i in sizes[1:]]        # Multiply rand by 0.01 to prevent weight explosion?
+        self.weights = [0.01*np.random.rand(i,j) for i,j in zip(sizes[1:],sizes[:-1])]
 
         if __debug__:
             print("Biases Sizes:\n {0}\n".format([b.shape for b in self.biases]))
@@ -170,7 +195,7 @@ class Network():
         return np.sum(mse)
 
 
-    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.3, lmbda = 0.001, valInputs = None, valTargets = None):
+    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.001, valInputs = None, valTargets = None):
         """
         Train neural network using training data. If valInputs & valTargets are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
@@ -274,6 +299,13 @@ class Network():
         nablaB = [np.zeros(b.shape) for b in self.biases]
         nablaW = [np.zeros(w.shape) for w in self.weights]
 
+        # print self.biases
+        # print "------"
+        # print self.weights
+        # print "------"
+        # print np.dot(self.weights[0], inputVec) + self.biases[0]
+        # print sigmoidVec(np.dot(self.weights[0], inputVec) + self.biases[0])
+
         # Feedforward and save intermediate values
         a = inputVec
         acts = [inputVec]    # List to store activations for each layer
@@ -307,6 +339,7 @@ class Network():
             nablaB[-l] = delta                                      # BP3
             nablaW[-l] = np.dot(delta, acts[-l-1].T)
 
+        # sys.exit()
         return nablaB, nablaW
 
 
@@ -343,51 +376,56 @@ class Network():
 if __name__ == "__main__":
 
     # Read Data
-    prefix = "building"     # or "house"
+    prefix = "house"
+    # prefix = "building"
     inputs = np.genfromtxt(prefix + "Inputs.csv",delimiter=",");
     targets = np.genfromtxt(prefix + "Targets.csv",delimiter=",");
     
 
     # Initialize Neural Network - Uncomment one
-    # NN = Network([3,4,2])         # Test
-    # NN = Network([13,20,1])       # House
-    NN = Network([14, 11, 20, 3])       # Building
+    NN = Network([13, 15, 1])       # House
+    # NN = Network([14, 20, 3])       # Building
     
 
     # Split data
     inputsTrain, inputsTest, inputsVal, targetsTrain, targetsTest, targetsVal, = dataSplit(inputs, targets)
 
 
-    # Plot Original Data to verify split worked - Optional
-    # plt.figure()
-    # plt.plot(inputsTrain.T)
-    # plt.figure()
-    # plt.plot(inputsTest.T)
-    # plt.figure()
-    # plt.plot(inputsVal.T)
-    # plt.figure()
-    # plt.plot(inputs.T)
-    # plt.figure()
-    # plt.plot(targetsTrain.T)
-    # plt.figure()
-    # plt.plot(targetsTest.T)
-    # plt.figure()
-    # plt.plot(targetsVal.T)
-    # plt.figure()
-    # plt.plot(targets.T)
+    # Reshape 1d vectors
+    # If target vector is 1d, it needs to be reshapen to be 2d. Use .reshape(1,-1) to do so
+    if prefix == "house":
+        targetsTrain = targetsTrain.reshape(1,-1)
+        targetsTest = targetsTest.reshape(1,-1)
+        targetsVal = targetsVal.reshape(1,-1)
+
+
+    # Scale data between -1 and 1
+    inputsTrainScaled, inputsTrainSpans = normalizeMatrix(inputsTrain)
+    targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain)
+    inputsTestScaled, inputsTestSpans = normalizeMatrix(inputsTest)
+    targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest)
+    inputsValScaled, inputsValSpans = normalizeMatrix(inputsVal)
+    targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal)
 
 
     # Train Network
-    NN.train(inputsTrain, targetsTrain, 491, valInputs=inputsVal, valTargets=targetsVal)
+    NN.train(inputsTrainScaled, targetsTrainScaled, 71, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=0.30, epochs=200)
+    # NN.train(inputsTrain, targetsTrain, 491, valInputs=inputsVal, valTargets=targetsVal)
+
 
     # Test Network
-    MSEtest, outputsTest = NN.evaluate(inputsTest, targetsTest)
-    print "Test MSE =", MSEtest
+    MSEtrainScaled, outputsTrainScaled = NN.evaluate(inputsTrainScaled, targetsTrainScaled)
+    MSEtestScaled, outputsTestScaled = NN.evaluate(inputsTestScaled, targetsTestScaled)
+    print "Test MSE =", MSEtestScaled
 
     # Plot Test Output
-    # plt.figure()
-    # plt.plot(targetsTest.T)
-    # plt.plot(outputsTest.T)
-    # plt.show()
+    plt.figure()
+    plt.plot(targetsTestScaled.T,'r')
+    plt.plot(outputsTestScaled.T)
+    plt.figure()
+    plt.plot(targetsTrainScaled.T)
+    plt.plot(outputsTrainScaled.T)
+    plt.show()
 
-    np.savetxt("out.csv", outputsTest.T, delimiter=",")
+    np.savetxt("testOut.csv", outputsTestScaled.T, delimiter=",")
+    np.savetxt("testTargets.csv", targetsTestScaled.T, delimiter=",")
