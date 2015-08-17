@@ -11,15 +11,13 @@ Requirements: Python 2.7.6 (Tested on)
               Numpy
               Matplotlib
 
-Notes:  - The purpose of this file is to help me understand neural networks on a programming level
+Notes:  
+        - The purpose of this file is to help me understand neural networks on a programming level
         - This code is specifically made to perform neural network regressions, not classifications. It won't
           work for classifications
 
-TODO:   - Add regularization
+TODO:   
         - Gradient checking?
-        - Normalize inputs
-        - Add training performance instead of just val. performance
-        - Make damn thing work
         - Test different datasets
         - Convert backprop/forward prop to matrix multiplication instead
           of looping through samples
@@ -100,23 +98,23 @@ def dataSplit(inputs, targets, trainSplit = 0.70, testSplit = 0.15, valSplit = 0
     return np.array(inputsTrain).T, np.array(inputsTest).T, np.array(inputsVal).T, np.array(targetsTrain).T, np.array(targetsTest).T, np.array(targetsVal).T
 
 
-def normalizeMatrix(mat):
+def normalizeMatrix(mat, toMin, toMax):
     """
-    Converts matrix to span -1 to 1
+    Converts matrix to span from toMin to toMax
     Returns converted matrix and array of tuples representing the original min/max
     Works on the rows of a matrix (min/max taken on rows)
     """
     numRows = mat.shape[0]
     sMat = np.zeros(mat.shape)
-    oSpans = []
+    fromSpans = []
     for i in xrange(numRows):
-        oMin, oMax = min(mat[i,:]), max(mat[i,:])       # Original min/max
-        sMat[i,:] = mat[i,:] - oMin
-        sMat[i,:] = sMat[i,:]/(oMax - oMin)
-        sMat[i,:] = sMat[i,:]*(2)-1                     # Convert to [-1,1] range
-        oSpans.append((oMin, oMax))
+        fromMin, fromMax = min(mat[i,:]), max(mat[i,:])       # Original min/max
+        sMat[i,:] = mat[i,:] - fromMin
+        sMat[i,:] = sMat[i,:]/(fromMax - fromMin)
+        sMat[i,:] = sMat[i,:]*(toMax - toMin)+toMin                     # Convert to new range
+        fromSpans.append((fromMin, fromMax))
 
-    return sMat, oSpans
+    return sMat, fromSpans
         
 
 
@@ -198,7 +196,7 @@ class Network():
         return np.sum(mse)
 
 
-    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.001, valInputs = None, valTargets = None):
+    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.0, valInputs = None, valTargets = None):
         """
         Train neural network using training data. If valInputs & valTargets are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
@@ -206,13 +204,18 @@ class Network():
         and regularization value respectively.
         """
 
+        # Prepare performance arrays
+        trainMseArr = np.zeros((1,epochs))
+
         # Get important sizes
         numVar, numSamples = trainInputs.shape
         if (valInputs is not None) and (valTargets is not None):
+            valMseArr = np.zeros((1,epochs))
             valSamples = valInputs.shape[1]
             valCounter = 0
             mseEps = 0.001
             mseOld = 0.0
+            valFlag = True
 
         # Train over epochs
         for i in xrange(epochs):
@@ -227,13 +230,19 @@ class Network():
 
             # Update weights using mini batches
             for miniBatch in zip(miniBatchInputs, miniBatchTargets):
-                self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda)
+                self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda, numSamples)
+
+            # Print training data performance
+            mse = self.evaluateMSE(trainInputs, trainTargets)
+            trainMseArr[0, i] = mse
+            print "Train Mse =", mse, "|| ",
 
             # Check on validation data
-            if (valInputs is not None) and (valTargets is not None):
+            if valFlag:
 
                 # Calculate MSE
                 mse = self.evaluateMSE(valInputs, valTargets)     
+                valMseArr[0, i] = mse
 
                 # Check for Validation increasing accuracy
                 if abs(mse - mseOld) < mseEps:
@@ -251,14 +260,18 @@ class Network():
             # Finish Printing
             print " "
 
-        return 0
+        if valFlag:
+            return trainMseArr, valMseArr
+        else:
+            return trainMseArr
 
 
-    def sgdMiniBatch(self, inputs, targets, eta, lmbda):
+    def sgdMiniBatch(self, inputs, targets, eta, lmbda, n):
         """
         Performs SGD on a mini-batch. This function is almost identical to Michael Nielson's
         The actual back-propagation is done in another function, while this handles the
         SGD
+        eta is learning rate, lmbda is regularization term, and n = total size of training data set
         """
         numSamples = inputs.shape[1]
         gradB = [np.zeros(b.shape) for b in self.biases]
@@ -271,8 +284,8 @@ class Network():
             gradW = [nw + dnw for nw, dnw in zip(gradW, deltaGradW)]
 
         # Do gradient descent update step
-        self.weights = [w - (eta/numSamples)*nw for w, nw in zip(self.weights, gradW)]
-        self.biases = [b - (eta/numSamples)*nb for b, nb in zip(self.biases, gradB)]
+        self.weights = [ (1-eta*(lmbda/n))*w - (eta/numSamples)*nw for w, nw in zip(self.weights, gradW) ]
+        self.biases = [ b - (eta/numSamples)*nb for b, nb in zip(self.biases, gradB) ]
 
         return 0
 
@@ -379,17 +392,18 @@ class Network():
 if __name__ == "__main__":
 
     # Prepare stuff
-    # prefix = "house"
-    # sizes = [13, 15, 1]
-    # mbSize = 71
+    prefix = "house"
+    sizes = [13, 15, 1]
+    mbSize = 71
     # prefix = "building"
     # sizes = [14, 20, 3]
     # mbSize = 491
-    prefix = "abalone"
-    sizes = [8, 15, 1]
-    mbSize = 172
+    # prefix = "abalone"
+    # sizes = [8, 20, 1]
+    # mbSize = 172
     numEpochs = 200
     etaVal = 0.30
+    lmbdaVal = 0.1
 
     # Read data
     inputs = np.genfromtxt(prefix + "Inputs.csv",delimiter=",");
@@ -411,16 +425,18 @@ if __name__ == "__main__":
 
 
     # Scale data between -1 and 1
-    inputsTrainScaled, inputsTrainSpans = normalizeMatrix(inputsTrain)
-    targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain)
-    inputsTestScaled, inputsTestSpans = normalizeMatrix(inputsTest)
-    targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest)
-    inputsValScaled, inputsValSpans = normalizeMatrix(inputsVal)
-    targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal)
+    inputsTrainScaled, inputsTrainSpans = normalizeMatrix(inputsTrain, -1, 1)
+    targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain, -1, 1)
+
+    inputsTestScaled, inputsTestSpans = normalizeMatrix(inputsTest, -1, 1)
+    targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest, -1, 1)
+
+    inputsValScaled, inputsValSpans = normalizeMatrix(inputsVal, -1, 1)
+    targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal, -1, 1)
 
 
     # Train Network
-    NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs)
+    trainMse, valMse = NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs, lmbda=lmbdaVal)
 
 
     # Test Network
@@ -428,13 +444,39 @@ if __name__ == "__main__":
     MSEtestScaled, outputsTestScaled = NN.evaluate(inputsTestScaled, targetsTestScaled)
     print "Test MSE =", MSEtestScaled
 
-    # Plot Test Output
+
+    # Scale stuff - How to do?
+    # targetsTrainScaled = normalizeMatrix(targetsTrainScaled, targetsTrainSpans[0][0], targetsTrainSpans[0][1])[0]
+    # targetsTestScaled = normalizeMatrix(targetsTestScaled, targetsTestSpans[0][0], targetsTestSpans[0][1])[0]
+    # outputsTrainScaled = normalizeMatrix(outputsTrainScaled, targetsTrainSpans[0][0], targetsTrainSpans[0][1])[0]
+    # outputsTestScaled = normalizeMatrix(outputsTestScaled, targetsTestSpans[0][0], targetsTestSpans[0][1])[0]
+
+
+    # Plot train and validation MSE progression
     plt.figure()
-    plt.plot(targetsTestScaled.T,'r')
-    plt.plot(outputsTestScaled.T)
-    # plt.figure()
-    # plt.plot(targetsTrainScaled.T)
-    # plt.plot(outputsTrainScaled.T)
+    trainLine, = plt.plot(np.arange(numEpochs).reshape(1,-1).T, trainMse.T, 'r', label='Train MSE')
+    valLine, = plt.plot(np.arange(numEpochs).reshape(1,-1).T, valMse.T, 'b', label='Val MSE')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE')
+    plt.legend(handles=[trainLine, valLine])
+    plt.title('Train and Val MSE over time')
+
+
+    # Plot Test Output
+    if prefix == "house":
+        plt.figure()
+        plt.plot(np.sort(targetsTestScaled.T,axis=0), 'r')
+        plt.plot(np.sort(outputsTestScaled.T,axis=0) )
+        plt.xlabel('Sample')
+        plt.ylabel('Scaled Output')
+    else:
+        plt.figure()
+        plt.plot(targetsTestScaled.T, 'r')
+        plt.plot(outputsTestScaled.T)
+        plt.xlabel('Sample')
+        plt.ylabel('Scaled Output')
+
+    plt.title('Network Test Output vs. Test Data')
     plt.show()
 
     np.savetxt("testOut.csv", outputsTestScaled.T, delimiter=",")
