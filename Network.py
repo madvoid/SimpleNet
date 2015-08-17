@@ -18,6 +18,7 @@ Notes:
 
 TODO:   
         - Gradient checking?
+        - Enable dropout
         - Test different datasets
         - Convert backprop/forward prop to matrix multiplication instead
           of looping through samples
@@ -53,7 +54,7 @@ def sigmoidPrime(z):
     return sigmoid(z) * (1 - sigmoid(z))
 
 
-def dataSplit(inputs, targets, trainSplit = 0.70, testSplit = 0.15, valSplit = 0.15):
+def dataSplit(inputs, targets, trainSplit = 0.75, testSplit = 0.15, valSplit = 0.10):
     """
     - Splits data into test, train, and validation data
     Original input data needs to be an m x n array where there are n variables and m samples
@@ -153,8 +154,9 @@ class Network():
             # np.random.seed(42)      # Consistent random seed
         
         self.numLayers = len(sizes)
-        self.biases = [0.01*np.random.rand(i, 1) for i in sizes[1:]]        # Multiply rand by 0.01 to prevent weight explosion?
-        self.weights = [0.01*np.random.rand(i,j) for i,j in zip(sizes[1:],sizes[:-1])]
+        varAccount = np.sqrt(2.0/sizes[0])      # Variance calibration as described by http://cs231n.github.io/neural-networks-2/#reg. May change to 1 if not working
+        self.biases = [0.01*np.random.rand(i, 1)*varAccount for i in sizes[1:]]        # Multiply rand by 0.01 to prevent weight explosion?
+        self.weights = [0.01*np.random.rand(i,j)*varAccount for i,j in zip(sizes[1:],sizes[:-1])]
 
         if __debug__:
             print("Biases Sizes:\n {0}\n".format([b.shape for b in self.biases]))
@@ -424,15 +426,21 @@ if __name__ == "__main__":
         targetsVal = targetsVal.reshape(1,-1)
 
 
-    # Scale data between -1 and 1
+    # Scale input data between -1 and 1
     inputsTrainScaled, inputsTrainSpans = normalizeMatrix(inputsTrain, -1, 1)
-    targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain, -1, 1)
-
     inputsTestScaled, inputsTestSpans = normalizeMatrix(inputsTest, -1, 1)
-    targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest, -1, 1)
-
     inputsValScaled, inputsValSpans = normalizeMatrix(inputsVal, -1, 1)
-    targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal, -1, 1)
+
+    # Scale target data between -1 and 1
+    # targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain, -1, 1)
+    # targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest, -1, 1)
+    # targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal, -1, 1)
+
+    # Don't scale target data between -1 and 1
+    # Variables are only reassigned to make refactoring easier
+    targetsTestScaled = targetsTest
+    targetsTrainScaled = targetsTrain
+    targetsValScaled = targetsVal
 
 
     # Train Network
@@ -445,13 +453,6 @@ if __name__ == "__main__":
     print "Test MSE =", MSEtestScaled
 
 
-    # Scale stuff - How to do?
-    # targetsTrainScaled = normalizeMatrix(targetsTrainScaled, targetsTrainSpans[0][0], targetsTrainSpans[0][1])[0]
-    # targetsTestScaled = normalizeMatrix(targetsTestScaled, targetsTestSpans[0][0], targetsTestSpans[0][1])[0]
-    # outputsTrainScaled = normalizeMatrix(outputsTrainScaled, targetsTrainSpans[0][0], targetsTrainSpans[0][1])[0]
-    # outputsTestScaled = normalizeMatrix(outputsTestScaled, targetsTestSpans[0][0], targetsTestSpans[0][1])[0]
-
-
     # Plot train and validation MSE progression
     plt.figure()
     trainLine, = plt.plot(np.arange(numEpochs).reshape(1,-1).T, trainMse.T, 'r', label='Train MSE')
@@ -459,7 +460,7 @@ if __name__ == "__main__":
     plt.xlabel('Epoch')
     plt.ylabel('MSE')
     plt.legend(handles=[trainLine, valLine])
-    plt.title('Train and Val MSE over time')
+    plt.title('Train and Val MSE Over Time')
 
 
     # Plot Test Output
