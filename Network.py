@@ -18,7 +18,6 @@ Notes:
 
 TODO:   
         - Gradient checking?
-        - Enable dropout
         - Test different datasets
         - Convert backprop/forward prop to matrix multiplication instead
           of looping through samples
@@ -167,7 +166,7 @@ class Network():
         """
         Forward propogates an input vector "a" throughout
         the neural network, assuming a linear activation function on output layer. 
-        Input vector "a" should be passed in as a *2d* numpy array, 
+        Input vector "a" should be passed in as a *2d* numpy array (column vector), 
         even though it is only mathematically
         1d. (Use a.reshape(-1,1) to do so)
         """
@@ -321,7 +320,6 @@ class Network():
         nablaW = [np.zeros(w.shape) for w in self.weights]
 
         # Feedforward and save intermediate values
-        # This is where dropout happens (if desired)
         a = inputVec
         acts = [inputVec]    # List to store activations for each layer
         zs = []                     # List to store weighted inputs for each layer
@@ -356,11 +354,13 @@ class Network():
         # Backward pass rest of layers
         for l in xrange(2, self.numLayers):
             z = zs[-l]
-            spv = sigmoidPrimeVec(z)
             if self.dpFlag:
                 dropMask = dpMasks[-l+1]
-                delta = np.dot(self.weights[-l+1].T, delta) * spv * dropMask       # BP2 with dropout
+                spv = sigmoidPrimeVec(dropMask*z)
+                w = self.weights[-l+1].T * dropMask
+                delta = np.dot(w, delta) * spv       # BP2 with dropout
             else:
+                spv = sigmoidPrimeVec(z)
                 delta = np.dot(self.weights[-l+1].T, delta) * spv       # BP2
 
             nablaB[-l] = delta                                      # BP3
@@ -403,26 +403,24 @@ class Network():
 if __name__ == "__main__":
 
     # Prepare stuff
-    prefix = "house"
-    sizes = [13, 30, 1]
-    mbSize = 71
+    # prefix = "house"
+    # sizes = [13, 30, 15, 1]
+    # mbSize = 71
     # prefix = "building"
     # sizes = [14, 20, 3]
     # mbSize = 491
-    # prefix = "abalone"
-    # sizes = [8, 20, 1]
-    # mbSize = 172
+    prefix = "abalone"
+    sizes = [8, 20, 1]
+    mbSize = 172
     numEpochs = 200
     etaVal = 0.10
     lmbdaVal = 0.1
-    dpOut = False
+    dpOut = True
     dpP = 0.50
-    if dpOut:
-        etaVal *= dpP**2
 
 
     # Seed random number for comparisons
-    np.random.seed(14)
+    # np.random.seed(14)
 
 
     # Read data
