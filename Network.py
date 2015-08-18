@@ -198,13 +198,16 @@ class Network():
         return np.sum(mse)
 
 
-    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.0, valInputs = None, valTargets = None):
+    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.0, dropout=False, dropProb=0.5, valInputs = None, valTargets = None):
         """
         Train neural network using training data. If valInputs & valTargets are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
         of the number of elements in the training set. "eta" and "lmbda" are the learning rate
         and regularization value respectively.
         """
+
+        self.dpFlag = dropout
+        self.dpProb = dropProb    
 
         # Prepare performance arrays
         trainMseArr = np.zeros((1,epochs))
@@ -317,23 +320,24 @@ class Network():
         nablaB = [np.zeros(b.shape) for b in self.biases]
         nablaW = [np.zeros(w.shape) for w in self.weights]
 
-        # print self.biases
-        # print "------"
-        # print self.weights
-        # print "------"
-        # print np.dot(self.weights[0], inputVec) + self.biases[0]
-        # print sigmoidVec(np.dot(self.weights[0], inputVec) + self.biases[0])
-
         # Feedforward and save intermediate values
+        # This is where dropout happens (if desired)
         a = inputVec
         acts = [inputVec]    # List to store activations for each layer
         zs = []                     # List to store weighted inputs for each layer
+        dpMasks = []
         for i in xrange(self.numLayers - 2):        # -2 because weights, biases have 1 less than numLayers, then avoid last layer
             b = self.biases[i]
             w = self.weights[i]
-            z = np.dot(w, a) + b
+            z = (np.dot(w, a) + b)
+            if self.dpFlag:
+                dropMask = (np.random.rand(*z.shape) < self.dpProb) / self.dpProb
+                dpMasks.append(dropMask)
+                a = sigmoidVec(z) * dropMask
+            else:
+                a = sigmoidVec(z)
+
             zs.append(z)
-            a = sigmoidVec(z)
             acts.append(a)
 
         # Above, but for last layer
@@ -353,7 +357,12 @@ class Network():
         for l in xrange(2, self.numLayers):
             z = zs[-l]
             spv = sigmoidPrimeVec(z)
-            delta = np.dot(self.weights[-l+1].T, delta) * spv       # BP2
+            if self.dpFlag:
+                dropMask = dpMasks[-l+1]
+                delta = np.dot(self.weights[-l+1].T, delta) * spv * dropMask       # BP2 with dropout
+            else:
+                delta = np.dot(self.weights[-l+1].T, delta) * spv       # BP2
+
             nablaB[-l] = delta                                      # BP3
             nablaW[-l] = np.dot(delta, acts[-l-1].T)
 
@@ -395,7 +404,7 @@ if __name__ == "__main__":
 
     # Prepare stuff
     prefix = "house"
-    sizes = [13, 15, 1]
+    sizes = [13, 30, 1]
     mbSize = 71
     # prefix = "building"
     # sizes = [14, 20, 3]
@@ -404,8 +413,17 @@ if __name__ == "__main__":
     # sizes = [8, 20, 1]
     # mbSize = 172
     numEpochs = 200
-    etaVal = 0.30
+    etaVal = 0.10
     lmbdaVal = 0.1
+    dpOut = False
+    dpP = 0.50
+    if dpOut:
+        etaVal *= dpP**2
+
+
+    # Seed random number for comparisons
+    np.random.seed(14)
+
 
     # Read data
     inputs = np.genfromtxt(prefix + "Inputs.csv",delimiter=",");
@@ -444,7 +462,7 @@ if __name__ == "__main__":
 
 
     # Train Network
-    trainMse, valMse = NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs, lmbda=lmbdaVal)
+    trainMse, valMse = NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs, lmbda=lmbdaVal, dropout=dpOut, dropProb=dpP)
 
 
     # Test Network
@@ -466,18 +484,19 @@ if __name__ == "__main__":
     # Plot Test Output
     if prefix == "house":
         plt.figure()
-        plt.plot(np.sort(targetsTestScaled.T,axis=0), 'r')
-        plt.plot(np.sort(outputsTestScaled.T,axis=0) )
+        tLine, = plt.plot(np.sort(targetsTestScaled.T,axis=0), 'r', label='Targets')
+        oLine, = plt.plot(np.sort(outputsTestScaled.T,axis=0), label='Outputs' )
         plt.xlabel('Sample')
         plt.ylabel('Scaled Output')
     else:
         plt.figure()
-        plt.plot(targetsTestScaled.T, 'r')
-        plt.plot(outputsTestScaled.T)
+        tLine, = plt.plot(targetsTestScaled.T, 'r', label='Targets')
+        oLine, = plt.plot(outputsTestScaled.T, label='Outputs')
         plt.xlabel('Sample')
         plt.ylabel('Scaled Output')
 
     plt.title('Network Test Output vs. Test Data')
+    plt.legend(handles=[tLine, oLine])
     plt.show()
 
     np.savetxt("testOut.csv", outputsTestScaled.T, delimiter=",")
