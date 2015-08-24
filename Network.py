@@ -20,6 +20,7 @@ TODO:
         - Test different datasets
         - Convert backprop/forward prop to matrix multiplication instead
           of looping through samples
+        - Hyperparameter search
         - Gradient checking?
 """
 

@@ -8,6 +8,10 @@ Tidbits I learned while making this:
 	* Scaling inputs to [-1,1] span. This one helped a lot
 	* *Not* scaling targets to [-1,1]. This helped a lot too
 	* Adding regularization
+	* Momentum works fairly well. More tests need to be run to see how well
 	
 * The following items reduce or didn't affect network performance
 	* Validation failure happens very rarely. May not be necessary
+	
+* Miscellaneous Notes:
+	* Start with a low number of hidden nodes and slowly increase to (hopefully) increase accuracy	
