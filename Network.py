@@ -17,10 +17,10 @@ Notes:
           work for classifications
 
 TODO:   
-        - Gradient checking?
         - Test different datasets
         - Convert backprop/forward prop to matrix multiplication instead
           of looping through samples
+        - Gradient checking?
 """
 
 
@@ -197,7 +197,7 @@ class Network():
         return np.sum(mse)
 
 
-    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.0, dropout=False, dropProb=0.5, valInputs = None, valTargets = None):
+    def train(self, trainInputs, trainTargets, miniBatchSize, epochs = 50, eta = 0.15, lmbda = 0.0, momentum=False, mu = 0.5, dropout=False, dropProb=0.5, valInputs = None, valTargets = None):
         """
         Train neural network using training data. If valInputs & valTargets are included,
         validation will be calculated as well. "miniBatchSize" should be an even factor
@@ -206,13 +206,17 @@ class Network():
         """
 
         self.dpFlag = dropout
+        self.mmFlag = momentum
         self.dpProb = dropProb    
+        self.zB = [np.zeros(b.shape) for b in self.biases]   # Momentum term for weights. needs to stay persistent?
+        self.zW = [np.zeros(w.shape) for w in self.weights]  # Momentum term for biases.
 
         # Prepare performance arrays
         trainMseArr = np.zeros((1,epochs))
 
         # Get important sizes
         numVar, numSamples = trainInputs.shape
+        valFlag = False
         if (valInputs is not None) and (valTargets is not None):
             valMseArr = np.zeros((1,epochs))
             valSamples = valInputs.shape[1]
@@ -234,7 +238,7 @@ class Network():
 
             # Update weights using mini batches
             for miniBatch in zip(miniBatchInputs, miniBatchTargets):
-                self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda, numSamples)
+                self.sgdMiniBatch(miniBatch[0], miniBatch[1], eta, lmbda, mu, numSamples)
 
             # Print training data performance
             mse = self.evaluateMSE(trainInputs, trainTargets)
@@ -270,7 +274,7 @@ class Network():
             return trainMseArr
 
 
-    def sgdMiniBatch(self, inputs, targets, eta, lmbda, n):
+    def sgdMiniBatch(self, inputs, targets, eta, lmbda, mu, n):
         """
         Performs SGD on a mini-batch. This function is almost identical to Michael Nielson's
         The actual back-propagation is done in another function, while this handles the
@@ -288,8 +292,20 @@ class Network():
             gradW = [nw + dnw for nw, dnw in zip(gradW, deltaGradW)]
 
         # Do gradient descent update step
-        self.weights = [ (1-eta*(lmbda/n))*w - (eta/numSamples)*nw for w, nw in zip(self.weights, gradW) ]
-        self.biases = [ b - (eta/numSamples)*nb for b, nb in zip(self.biases, gradB) ]
+        if self.mmFlag:     # With momentum
+            for i in xrange(self.numLayers - 1):
+                w = self.weights[i]
+                nw = gradW[i]
+                self.zW[i] = mu*self.zW[i] - (eta/numSamples)*nw
+                self.weights[i] = w + self.zW[i] - eta*(lmbda/n)*w
+            for i in xrange(self.numLayers - 1):
+                b = self.biases[i]
+                nb = gradB[i]
+                self.zB[i] = mu*self.zB[i] - (eta/numSamples)*nb
+                self.biases[i] = b + self.zB[i]
+        else:               # Without momentum
+            self.weights = [ (1-eta*(lmbda/n))*w - (eta/numSamples)*nw for w, nw in zip(self.weights, gradW) ]
+            self.biases = [ b - (eta/numSamples)*nb for b, nb in zip(self.biases, gradB) ]
 
         return 0
 
@@ -403,24 +419,26 @@ class Network():
 if __name__ == "__main__":
 
     # Prepare stuff
-    # prefix = "house"
-    # sizes = [13, 30, 15, 1]
-    # mbSize = 71
+    prefix = "house"
+    sizes = [13, 50, 1]
+    mbSize = 71
     # prefix = "building"
     # sizes = [14, 20, 3]
     # mbSize = 491
-    prefix = "abalone"
-    sizes = [8, 20, 1]
-    mbSize = 172
+    # prefix = "abalone"
+    # sizes = [8, 45, 1]
+    # mbSize = 172
     numEpochs = 200
     etaVal = 0.10
     lmbdaVal = 0.1
     dpOut = True
     dpP = 0.50
+    momtum = True
+    muVal = 0.5
 
 
     # Seed random number for comparisons
-    # np.random.seed(14)
+    # np.random.seed(42)
 
 
     # Read data
@@ -447,10 +465,6 @@ if __name__ == "__main__":
     inputsTestScaled, inputsTestSpans = normalizeMatrix(inputsTest, -1, 1)
     inputsValScaled, inputsValSpans = normalizeMatrix(inputsVal, -1, 1)
 
-    # Scale target data between -1 and 1
-    # targetsTrainScaled, targetsTrainSpans = normalizeMatrix(targetsTrain, -1, 1)
-    # targetsTestScaled, targetsTestSpans = normalizeMatrix(targetsTest, -1, 1)
-    # targetsValScaled, targetsValSpans = normalizeMatrix(targetsVal, -1, 1)
 
     # Don't scale target data between -1 and 1
     # Variables are only reassigned to make refactoring easier
@@ -460,7 +474,7 @@ if __name__ == "__main__":
 
 
     # Train Network
-    trainMse, valMse = NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs, lmbda=lmbdaVal, dropout=dpOut, dropProb=dpP)
+    trainMse, valMse = NN.train(inputsTrainScaled, targetsTrainScaled, mbSize, valInputs=inputsValScaled, valTargets=targetsValScaled, eta=etaVal, epochs=numEpochs, lmbda=lmbdaVal, dropout=dpOut, dropProb=dpP, momentum=momtum, mu=muVal)
 
 
     # Test Network
